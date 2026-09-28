@@ -63,7 +63,48 @@ def build_chain() -> Any:
     ``deepseek-v4-flash-vision-exp``. The API key is loaded from .env.
     """
     ### YOUR CODE HERE
-    return None
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_deepseek import ChatDeepSeek
+
+    model = ChatDeepSeek(
+        model="deepseek-v4-flash-vision-exp",
+        temperature=0.2,
+        max_tokens=2048,
+    )
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are a precise receipt parser. "
+                "Read the receipt image and extract the following fields. "
+                "Return ONLY a JSON object with these keys:\n"
+                "- final_payment: the final amount paid after the ROUNDING line (a number)\n"
+                "- subtotal: the SUBTOTAL amount before rounding (a number)\n"
+                "- discount_lines: an array of every discount/promotion/coupon amount on the receipt, "
+                "each as a positive number. Include ALL such lines. Do NOT include the ROUNDING line.\n"
+                "Even if the image is blurry, rotated, or partially unclear, do your best. "
+                "Always return a JSON object. Never return an empty response. "
+                "Do NOT include any other text, explanation, or currency symbol. "
+                "Just output the JSON.",
+            ),
+            (
+                "human",
+                [
+                    {
+                        "type": "text",
+                        "text": "Extract the fields from this receipt.",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "{image_url}"},
+                    },
+                ],
+            ),
+        ]
+    )
+
+    return prompt | model   
 
 
 def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
@@ -79,10 +120,59 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
     to process independent receipt-extraction prompts in parallel.
     """
     ### YOUR CODE HERE
-    _ = (chain, images)
-    return {QUERY_1: DUMMY_RESPONSE, QUERY_2: DUMMY_RESPONSE}
+    import json as _json
+    from decimal import Decimal
 
+    total_final = Decimal("0.00")
+    total_without_discount = Decimal("0.00")
 
+    for path in images:
+        # 逐张调用，最多重试 3 次
+        result = None
+        for attempt in range(3):
+            try:
+                result = chain.invoke({"image_url": image_data_url(path)})
+                if response_text(result).strip():
+                    break
+            except Exception as exc:
+                print(f"[RETRY {attempt+1}] {path.name}: {exc}")
+        if result is None or not response_text(result).strip():
+            print(f"[FAILED] {path.name}: empty response after 3 attempts")
+            continue
+
+        text = response_text(result)
+        print("=" * 40)
+        print(path.name)
+        print(repr(text[:500]))
+
+        # 清理 markdown 代码块并解析 JSON
+        try:
+            cleaned = text.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.strip("`")
+                if cleaned.startswith("json"):
+                    cleaned = cleaned[4:]
+                cleaned = cleaned.strip()
+            data = _json.loads(cleaned)
+        except Exception:
+            continue
+
+        # 提取字段并累加
+        try:
+            final_payment = Decimal(str(data.get("final_payment", 0)))
+            subtotal = Decimal(str(data.get("subtotal", 0)))
+            discount_lines = data.get("discount_lines", [])
+            discounts = sum(Decimal(str(x)) for x in discount_lines)
+        except Exception:
+            continue
+
+        total_final += final_payment
+        total_without_discount += subtotal + discounts
+
+    return {
+        QUERY_1: f"HK${total_final:.2f}",
+        QUERY_2: f"HK${total_without_discount:.2f}",
+    }
 # Everything below is provided runner/scoring code. No edits are needed.
 
 _MONEY_RE = re.compile(
