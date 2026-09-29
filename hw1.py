@@ -127,7 +127,7 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
     total_without_discount = Decimal("0.00")
 
     for path in images:
-        # 逐张调用，最多重试 3 次
+        
         result = None
         for attempt in range(3):
             try:
@@ -145,7 +145,7 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
         print(path.name)
         print(repr(text[:500]))
 
-        # 清理 markdown 代码块并解析 JSON
+        
         try:
             cleaned = text.strip()
             if cleaned.startswith("```"):
@@ -157,7 +157,7 @@ def answer_queries(chain: Any, images: list[Path]) -> dict[str, Any]:
         except Exception:
             continue
 
-        # 提取字段并累加
+        
         try:
             final_payment = Decimal(str(data.get("final_payment", 0)))
             subtotal = Decimal(str(data.get("subtotal", 0)))

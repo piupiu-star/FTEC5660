@@ -48,9 +48,6 @@ DeepSeek Flash model. JPEG, PNG, GIF, and WebP inputs are accepted by the
 homework runner.
 
 
-## Homework 1 solution: 
-> to students: please fill your solution description here.
-
 ## Homework 1 solution:
 
 ### Chain design
